@@ -1,0 +1,15 @@
+{
+    "name": "libjson",
+    "keywords": "json, parser",
+    "description": "Simple JSON library",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/llasek/libjson.git"
+    },
+    "version": "0.0.1",
+    "build": {
+        "flags": "-DNO_SSTREAM",
+        "srcDir": "./src",
+        "srcFilter": "+<*> -<examples>"
+    }
+}
