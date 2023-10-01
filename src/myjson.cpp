@@ -73,6 +73,26 @@ CMyJsonNode::ValueType CMyJsonNode::GetType() const
     return CMyJsonNode::ValueType::Invalid;
 }
 
+CMyJsonNode& CMyJsonNode::operator[]( int a_nIdx )
+{
+#if __cpp_exceptions
+    throw std::out_of_range( "Node doesn't exist" );
+#else
+    static CMyJsonNode jn( "" );
+    return jn;
+#endif
+}
+
+CMyJsonNode& CMyJsonNode::operator[]( std::string_view a_strKey )
+{
+#if __cpp_exceptions
+    throw std::out_of_range( "Node doesn't exist" );
+#else
+    static CMyJsonNode jn( "" );
+    return jn;
+#endif
+}
+
 
 
 class CMyJsonNodeNull : public CMyJsonNode
@@ -100,28 +120,6 @@ public:
 
 protected:
 };
-
-
-
-CMyJsonNode& CMyJsonNode::operator[]( int a_nIdx )
-{
-#if __cpp_exceptions
-    throw std::out_of_range( "Node doesn't exist" );
-#else
-    static CMyJsonNodeNull jn( "" );
-    return jn;
-#endif
-}
-
-CMyJsonNode& CMyJsonNode::operator[]( std::string_view a_strKey )
-{
-#if __cpp_exceptions
-    throw std::out_of_range( "Node doesn't exist" );
-#else
-    static CMyJsonNodeNull jn( "" );
-    return jn;
-#endif
-}
 
 
 
@@ -391,9 +389,10 @@ struct SMyJsonToken
 class CMyJsonParser
 {
 public:
-    CMyJsonParser( std::string_view a_strJson )
-        : m_strJson( a_strJson ), m_nJsonIdx( 0 )
+    CMyJsonParser( std::function< std::string()> a_fnReadLine )
+        : m_fnReadLine( a_fnReadLine ), m_nJsonIdx( 0 )
     {
+        m_strJson = m_fnReadLine();
     }
 
     bool IsWhiteCase( const char a_char )
@@ -430,7 +429,7 @@ public:
                     return SMyJsonToken::TokenType::StringValue;
             }
         }
-        return SMyJsonToken::TokenType::Invalid;
+        return SMyJsonToken::TokenType::StringValue;
     }
 
     SMyJsonToken GetQuotedStringToken()
@@ -596,39 +595,47 @@ public:
 
     SMyJsonToken GetNextToken()
     {
-        while( m_nJsonIdx < m_strJson.length())
+        auto nJsonLen = m_strJson.length();
+        do
         {
-            const char c = m_strJson[ m_nJsonIdx++ ];
-            if( IsWhiteCase( c ))
+            while( m_nJsonIdx < nJsonLen )
             {
-                continue;
+                const char c = m_strJson[ m_nJsonIdx++ ];
+                if( IsWhiteCase( c ))
+                {
+                    continue;
+                }
+
+                switch( c )
+                {
+                    case ',':
+                        return SMyJsonToken{ SMyJsonToken::TokenType::Comma };
+
+                    case '{':
+                        return SMyJsonToken{ SMyJsonToken::TokenType::NewObject };
+
+                    case '}':
+                        return SMyJsonToken{ SMyJsonToken::TokenType::EndObject };
+
+                    case '[':
+                        return SMyJsonToken{ SMyJsonToken::TokenType::NewArray };
+
+                    case ']':
+                        return SMyJsonToken{ SMyJsonToken::TokenType::EndArray };
+
+                    case '"':
+                        return GetQuotedStringToken();
+
+                    default:
+                        m_nJsonIdx--;
+                        return GetValueToken();
+                }
             }
+            m_strJson = m_fnReadLine();
+            nJsonLen = m_strJson.length();
+            m_nJsonIdx = 0;
+        } while( nJsonLen );
 
-            switch( c )
-            {
-                case ',':
-                    return SMyJsonToken{ SMyJsonToken::TokenType::Comma };
-
-                case '{':
-                    return SMyJsonToken{ SMyJsonToken::TokenType::NewObject };
-
-                case '}':
-                    return SMyJsonToken{ SMyJsonToken::TokenType::EndObject };
-
-                case '[':
-                    return SMyJsonToken{ SMyJsonToken::TokenType::NewArray };
-
-                case ']':
-                    return SMyJsonToken{ SMyJsonToken::TokenType::EndArray };
-
-                case '"':
-                    return GetQuotedStringToken();
-
-                default:
-                    m_nJsonIdx--;
-                    return GetValueToken();
-            }
-        }
         return SMyJsonToken{ SMyJsonToken::TokenType::Eof };
     }
 
@@ -691,8 +698,6 @@ public:
 
     my_shared_ptr< CMyJsonNode > Parse()
     {
-        const static my_shared_ptr< CMyJsonNode > SpJsonInvalid{};
-
         std::stack< my_shared_ptr< CMyJsonNode >> stack;
         my_shared_ptr< CMyJsonNode > curNode {};
         SMyJsonToken jtObjName{};
@@ -700,6 +705,11 @@ public:
 
         for( ; !bInvalid; )
         {
+            if(( curNode.m_ptr ) && ( stack.empty()))
+            {
+                break;
+            }
+
             auto jt = GetNextToken();
 
             // @todo_llasek: DBG
@@ -765,7 +775,7 @@ public:
                     bInvalid = (( !curNode.m_ptr ) || ( curNode.m_ptr->GetType() != CMyJsonNode::ValueType::Object ));
                     assert( bInvalid == false );    // @todo_llasek: DBG
                     break;
-
+                
                 case SMyJsonToken::TokenType::NewArray:
                     curNode.m_ptr = std::make_shared< CMyJsonNodeArray >( jtObjName.m_strValue );
                     bInvalid = !JsonAddNode( stack, curNode, jtObjName );
@@ -789,7 +799,7 @@ public:
 
                 case SMyJsonToken::TokenType::Invalid:
                 default:
-                    return SpJsonInvalid;
+                    return my_shared_ptr< CMyJsonNode >{};
             }
         }
 
@@ -801,12 +811,26 @@ public:
     }
 
 protected:
-    std::string_view m_strJson;
+    std::function< std::string()> m_fnReadLine;
+    std::string m_strJson;
     uint32_t m_nJsonIdx;
 };
 
 my_shared_ptr< CMyJsonNode > CMyJsonNode::Parse( std::string_view a_strJson )
 {
-    CMyJsonParser jp( a_strJson );
+    std::string strJson( a_strJson );
+    CMyJsonParser jp(
+        [ &strJson ]()
+        {
+            std::string str( strJson );
+            strJson.clear();
+            return str;
+        });
+    return jp.Parse();
+}
+
+my_shared_ptr< CMyJsonNode > CMyJsonNode::Parse( std::function< std::string() > a_fnReadLine )
+{
+    CMyJsonParser jp( a_fnReadLine );
     return jp.Parse();
 }
