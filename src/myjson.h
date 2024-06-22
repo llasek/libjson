@@ -1,77 +1,130 @@
 /**
  * Simple JSON library
- * (c) 2023 Łukasz Łasek
+ * (c) 2023-2024 Łukasz Łasek
  */
 #pragma once
 
-#include <string_view>
-#include <string>
-#include <memory>
+#ifndef JSON_WITHOUT_BOOL
+    #define JSON_WITH_BOOL
+#endif // JSON_WITHOUT_BOOL
+#ifndef JSON_WITHOUT_INT
+    #define JSON_WITH_INT
+#endif // JSON_WITHOUT_INT
+#ifndef JSON_WITHOUT_DOUBLE
+    #define JSON_WITH_DOUBLE
+#endif // JSON_WITHOUT_DOUBLE
+#ifndef JSON_WITHOUT_STRING
+    #define JSON_WITH_STRING
+#endif // JSON_WITHOUT_STRING
+
 #include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+
+namespace myjson {
 
 template<typename TDerived, typename TBase = void>
 struct my_shared_ptr : my_shared_ptr<TBase, void> {
-    std::shared_ptr<TDerived> m_ptr;
+    std::shared_ptr<TDerived> ptr;
 
     TDerived& operator*() const {
-        return *m_ptr;
+        return *ptr;
     }
 
     TDerived* operator->() const {
-        return m_ptr.get();
+        return ptr.get();
     }
 
     explicit operator bool() const {
-        return m_ptr.get() ? true : false;
+        return ptr.get() ? true : false;
+    }
+
+    const my_shared_ptr<TDerived> operator[](int idx) const {
+        return (*ptr)[idx];
+    }
+
+    const my_shared_ptr<TDerived> operator[](std::string_view key) const {
+        return (*ptr)[key];
     }
 };
 
 template<typename TBase>
 struct my_shared_ptr<TBase, void> {
-    std::shared_ptr<TBase> m_ptr;
+    std::shared_ptr<TBase> ptr;
 
     TBase& operator*() const {
-        return *m_ptr;
+        return *ptr;
     }
 
     TBase* operator->() const {
-        return m_ptr.get();
+        return ptr.get();
     }
 
     explicit operator bool() const {
-        return m_ptr.get() ? true : false;
+        return ptr.get() ? true : false;
+    }
+
+    const my_shared_ptr<TBase> operator[](int idx) const {
+        return (*ptr)[idx];
+    }
+
+    const my_shared_ptr<TBase> operator[](std::string_view key) const {
+        return (*ptr)[key];
     }
 };
 
-class CMyJsonNode {
+class Node {
 public:
+    using ptr = my_shared_ptr<Node>;
+
     enum class ValueType : unsigned int {
         Invalid = 0,
         Null,
-        Bool,
-        Int,
-        Double,
-        String,
         Object,
         Array,
+#ifdef JSON_WITH_BOOL
+        Bool,
+#endif // JSON_WITH_BOOL
+#ifdef JSON_WITH_INT
+        Int,
+#endif // JSON_WITH_INT
+#ifdef JSON_WITH_DOUBLE
+        Double,
+#endif // JSON_WITH_DOUBLE
+#ifdef JSON_WITH_STRING
+        String,
+#endif // JSON_WITH_STRING
     };
 
-    CMyJsonNode(std::string_view a_strKey);
+    Node(std::string_view key, ValueType type);
+    virtual ~Node() {};
 
-    virtual explicit operator bool() const;
-    virtual explicit operator int() const;
-    virtual explicit operator double() const;
-    virtual explicit operator std::string_view() const;
+    ValueType getType() const;
+    std::string_view getKey() const;
+#ifdef JSON_WITH_BOOL
+    std::optional<bool> getBool() const;
+#endif // JSON_WITH_BOOL
+#ifdef JSON_WITH_INT
+    std::optional<int> getInt() const;
+#endif // JSON_WITH_INT
+#ifdef JSON_WITH_DOUBLE
+    std::optional<double> getDouble() const;
+#endif // JSON_WITH_DOUBLE
+#ifdef JSON_WITH_STRING
+    std::optional<std::string_view> getString() const;
+#endif // JSON_WITH_STRING
 
-    virtual std::string_view GetKey() const;
-    virtual ValueType GetType() const;
+    const ptr operator[](int idx) const;
+    const ptr operator[](std::string_view key) const;
 
-    virtual CMyJsonNode& operator[](int a_nIdx);
-    virtual CMyJsonNode& operator[](std::string_view a_strKey);
-
-    static my_shared_ptr<CMyJsonNode> Parse(std::string_view a_strJson);
-    static my_shared_ptr<CMyJsonNode> Parse(std::function< std::string() > a_fnReadLine);
+    static const ptr parse(std::string_view json);
+    static const ptr parse(std::function<std::string()> fnReadLine);
 
 protected:
-    std::string m_strKey;
+    ValueType type;
+    std::string key;
 };
+
+}   // namespace myjson

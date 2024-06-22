@@ -1,10 +1,12 @@
 /**
  * Simple JSON library
- * (c) 2023 Łukasz Łasek
+ * (c) 2023-2024 Łukasz Łasek
  */
 #include "myjson.h"
 
 #include <algorithm>
+#include <assert.h>
+#include <stack>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -14,413 +16,279 @@
 #endif
 
 #ifdef WITH_SSTREAM
-    #include <sstream>
     #include <iostream>
+    #include <sstream>
 #endif
-#include <stack>
 
-#include <assert.h>
+namespace myjson {
 
-
-CMyJsonNode::CMyJsonNode(std::string_view a_strKey)
-    : m_strKey(a_strKey)
-{
-}
-
-CMyJsonNode::operator bool() const
-{
-#if __cpp_exceptions
-    throw std::bad_cast();
-#else
-    return false;
-#endif
-}
-
-CMyJsonNode::operator int() const
-{
-#if __cpp_exceptions
-    throw std::bad_cast();
-#else
-    return std::numeric_limits<int>::min();;
-#endif
-}
-
-CMyJsonNode::operator double() const
-{
-#if __cpp_exceptions
-    throw std::bad_cast();
-#else
-    return std::numeric_limits<double>::quiet_NaN();
-#endif
-}
-
-CMyJsonNode::operator std::string_view() const
-{
-#if __cpp_exceptions
-    throw std::bad_cast();
-#else
-    return "";
-#endif
-}
-
-std::string_view CMyJsonNode::GetKey() const
-{
-    return m_strKey;
-}
-
-CMyJsonNode::ValueType CMyJsonNode::GetType() const
-{
-    return CMyJsonNode::ValueType::Invalid;
-}
-
-CMyJsonNode& CMyJsonNode::operator[](int a_nIdx)
-{
-#if __cpp_exceptions
-    throw std::out_of_range("Node doesn't exist");
-#else
-    static CMyJsonNode jn("");
-    return jn;
-#endif
-}
-
-CMyJsonNode& CMyJsonNode::operator[](std::string_view a_strKey)
-{
-#if __cpp_exceptions
-    throw std::out_of_range("Node doesn't exist");
-#else
-    static CMyJsonNode jn("");
-    return jn;
-#endif
-}
-
-
-
-class CMyJsonNodeNull : public CMyJsonNode {
+#ifdef JSON_WITH_BOOL
+class BoolNode : public Node {
 public:
-    CMyJsonNodeNull(std::string_view a_strKey)
-        : CMyJsonNode(a_strKey) {
-    }
-
-    explicit operator int() const override {
-        return 0;
-    }
-
-    explicit operator std::string_view() const override {
-        return "null";
-    }
-
-    ValueType GetType() const override {
-        return ValueType::Null;
-    }
-
-protected:
+    BoolNode(std::string_view key, bool value) : Node(key, ValueType::Bool), value(value) {}
+    bool value;
 };
+#endif // JSON_WITH_BOOL
 
-
-
-class CMyJsonNodeBool : public CMyJsonNode {
+#ifdef JSON_WITH_INT
+class IntNode : public Node {
 public:
-    CMyJsonNodeBool(std::string_view a_strKey, bool a_bValue)
-        : CMyJsonNode(a_strKey), m_bValue(a_bValue) {
-    }
-
-    explicit operator bool() const override {
-        return m_bValue;
-    }
-
-    explicit operator std::string_view() const override {
-        return (m_bValue) ? "true" : "false";
-    }
-
-    ValueType GetType() const override {
-        return ValueType::Bool;
-    }
-
-protected:
-    bool m_bValue;
+    IntNode(std::string_view key, long long value) : Node(key, ValueType::Int), value(value) {}
+    long long value;
 };
+#endif // JSON_WITH_INT
 
-
-
-class CMyJsonNodeInt : public CMyJsonNode {
+#ifdef JSON_WITH_DOUBLE
+class DoubleNode : public Node {
 public:
-    CMyJsonNodeInt(std::string_view a_strKey, long long a_nValue)
-        : CMyJsonNode(a_strKey), m_nValue(a_nValue) {
-    }
-
-    explicit operator int() const override {
-        return m_nValue;
-    }
-
-    ValueType GetType() const override {
-        return ValueType::Int;
-    }
-
-protected:
-    long long m_nValue;
+    DoubleNode(std::string_view key, double value) : Node(key, ValueType::Double), value(value) {}
+    double value;
 };
+#endif // JSON_WITH_DOUBLE
 
-
-
-class CMyJsonNodeDouble : public CMyJsonNode {
+#ifdef JSON_WITH_STRING
+class StringNode : public Node {
 public:
-    CMyJsonNodeDouble(std::string_view a_strKey, double a_dValue)
-        : CMyJsonNode(a_strKey), m_dValue(a_dValue) {
-    }
-
-    explicit operator double() const override {
-        return m_dValue;
-    }
-
-    ValueType GetType() const override {
-        return ValueType::Double;
-    }
-
-protected:
-    double m_dValue;
+    StringNode(std::string_view key, std::string value) : Node(key, ValueType::String), value(value) {}
+    std::string value;
 };
+#endif // JSON_WITH_STRING
 
-
-
-class CMyJsonNodeString : public CMyJsonNode {
+class VectorNode : public Node {
 public:
-    CMyJsonNodeString(std::string_view a_strKey, std::string_view a_strValue)
-        : CMyJsonNode(a_strKey), m_strValue(a_strValue) {
-    }
+    VectorNode(std::string_view key, ValueType type) : Node(key, type) {}
 
-    explicit operator std::string_view() const override {
-        return m_strValue;
-    }
-
-    ValueType GetType() const override {
-        return ValueType::String;
-    }
-
-protected:
-    std::string m_strValue;
-};
-
-
-
-class CMyJsonNodeObject : public CMyJsonNode {
-public:
-    CMyJsonNodeObject(std::string_view a_strKey)
-        : CMyJsonNode(a_strKey) {
-    }
-
-    ValueType GetType() const override {
-        return ValueType::Object;
-    }
-
-    CMyJsonNode& operator[](int a_nIdx) override {
-        if (m_vecNodes.size() < (size_t)a_nIdx) {
-#if __cpp_exceptions
-            throw std::out_of_range("Node doesn't exist");
-#else
-            static CMyJsonNodeNull jn("");
-            return jn;
-#endif
+    const Node::ptr operator[](int idx) const {
+        if (nodes.size() < (size_t)idx) {
+            return {};
         }
 
-        return *m_vecNodes[a_nIdx].m_ptr.get();
+        return nodes[idx];
     }
 
-    CMyJsonNode& operator[](std::string_view a_strKey) override {
-        auto it = std::find_if(m_vecNodes.begin(), m_vecNodes.end(),
-        [a_strKey](auto pChild) {
-            return pChild.m_ptr->GetKey() == a_strKey;
+    const Node::ptr operator[](std::string_view key) const {
+        auto it = std::find_if(nodes.cbegin(), nodes.cend(), [key](auto child) {
+            return child->getKey() == key;
         });
 
-        if (it == m_vecNodes.end()) {
-#if __cpp_exceptions
-            throw std::out_of_range("Node doesn't exist");
-#else
-            static CMyJsonNodeNull jn("");
-            return jn;
-#endif
+        if (it == nodes.cend()) {
+            return {};
         }
 
-        return *it->m_ptr.get();
+        return *it;
     }
 
-    void AddNode(my_shared_ptr<CMyJsonNode> a_jn) {
-        m_vecNodes.push_back(a_jn);
+    void addNode(Node::ptr node) {
+        nodes.push_back(node);
     }
 
 protected:
-    std::vector<my_shared_ptr<CMyJsonNode>> m_vecNodes;
+    std::vector<Node::ptr> nodes;
 };
 
-
-
-class CMyJsonNodeArray : public CMyJsonNode {
+class ObjectNode : public VectorNode {
 public:
-    CMyJsonNodeArray(std::string_view a_strKey)
-        : CMyJsonNode(a_strKey) {
-    }
+    ObjectNode(std::string_view key) : VectorNode(key, ValueType::Object) {}
+};
 
-    ValueType GetType() const override {
-        return ValueType::Array;
-    }
-
-    CMyJsonNode& operator[](int a_nIdx) override {
-        if (m_vecNodes.size() < (size_t)a_nIdx) {
-#if __cpp_exceptions
-            throw std::out_of_range("Node doesn't exist");
-#else
-            static CMyJsonNodeNull jn("");
-            return jn;
-#endif
-        }
-
-        return *m_vecNodes[a_nIdx].m_ptr;
-    }
-
-    CMyJsonNode& operator[](std::string_view a_strKey) override {
-        auto it = std::find_if(m_vecNodes.begin(), m_vecNodes.end(), [a_strKey](auto pChild) { return pChild.m_ptr->GetKey() == a_strKey; });
-
-        if (it == m_vecNodes.end()) {
-#if __cpp_exceptions
-            throw std::out_of_range("Node doesn't exist");
-#else
-            static CMyJsonNodeNull jn("");
-            return jn;
-#endif
-        }
-
-        return *it->m_ptr;
-    }
-
-    void AddNode(my_shared_ptr<CMyJsonNode> a_jn) {
-        m_vecNodes.push_back(a_jn);
-    }
-
-protected:
-    std::vector<my_shared_ptr<CMyJsonNode>> m_vecNodes;
+class ArrayNode : public VectorNode {
+public:
+    ArrayNode(std::string_view key) : VectorNode(key, ValueType::Array) {}
 };
 
 
 
-struct SMyJsonToken {
-    enum class TokenType : unsigned int {
-        Invalid = 0,
+Node::Node(std::string_view key, ValueType type)
+    : type{type}, key{key}
+{
+}
 
-        ObjectName,     // object name is followed by a ':'
+Node::ValueType Node::getType() const
+{
+    return type;
+}
 
-        NullValue,
-        TrueValue,
-        FalseValue,
-        IntValue,
-        DoubleValue,
-        StringValue,
+std::string_view Node::getKey() const
+{
+    return key;
+}
 
-        NewObject,
-        EndObject,
+#ifdef JSON_WITH_BOOL
+std::optional<bool> Node::getBool() const {
+    if (type == ValueType::Bool) {
+        return {static_cast<const BoolNode*>(this)->value};
+    }
+    return {};
+}
+#endif // JSON_WITH_BOOL
 
-        NewArray,
-        EndArray,
+#ifdef JSON_WITH_INT
+std::optional<int> Node::getInt() const {
+    if (type == ValueType::Int) {
+        return {static_cast<const IntNode*>(this)->value};
+    }
+    return {};
+}
+#endif // JSON_WITH_INT
 
-        Comma,
-        Eof,
-    };
+#ifdef JSON_WITH_DOUBLE
+std::optional<double> Node::getDouble() const {
+    if (type == ValueType::Double) {
+        return {static_cast<const DoubleNode*>(this)->value};
+    }
+    return {};
+}
+#endif // JSON_WITH_DOUBLE
 
-    TokenType m_eType;
-    std::string m_strValue;
+#ifdef JSON_WITH_STRING
+std::optional<std::string_view> Node::getString() const {
+    if (type == ValueType::String) {
+        return {static_cast<const StringNode*>(this)->value};
+    }
+    return {};
+}
+#endif // JSON_WITH_STRING
 
-    static std::string_view GetTokenType(TokenType a_tt) {
-        static std::string_view Sarr[] = {
-            "Invalid",
-            "ObjectName",
-            "NullValue",
-            "TrueValue",
-            "FalseValue",
-            "IntValue",
-            "DoubleValue",
-            "StringValue",
-            "NewObject",
-            "EndObject",
-            "NewArray",
-            "EndArray",
-            "Comma",
-            "Eof",
+const Node::ptr Node::operator[](int idx) const
+{
+    if (type != ValueType::Array && type != ValueType::Object) {
+        return {};
+    }
+
+    const auto& vectorNode = *static_cast<const VectorNode*>(this);
+    return vectorNode[idx];
+}
+
+const Node::ptr Node::operator[](std::string_view key) const
+{
+    if (type != ValueType::Array && type != ValueType::Object) {
+        return {};
+    }
+
+    const auto& vectorNode = *static_cast<const VectorNode*>(this);
+    return vectorNode[key];
+}
+
+
+
+class Parser {
+public:
+    struct Token {
+        enum class Type : unsigned int {
+            Invalid = 0,
+
+            ObjectName,     // object name is followed by a ':'
+
+            NullValue,
+            TrueValue,
+            FalseValue,
+            IntValue,
+            DoubleValue,
+            StringValue,
+
+            NewObject,
+            EndObject,
+
+            NewArray,
+            EndArray,
+
+            Comma,
+            Eof,
         };
 
-        return Sarr[(int)a_tt ];
+        Type type;
+        std::string value;
+
+        static std::string_view getType(Type type) {
+            static std::string_view Sarr[] = {
+                "Invalid",
+                "ObjectName",
+                "NullValue",
+                "TrueValue",
+                "FalseValue",
+                "IntValue",
+                "DoubleValue",
+                "StringValue",
+                "NewObject",
+                "EndObject",
+                "NewArray",
+                "EndArray",
+                "Comma",
+                "Eof",
+            };
+            return Sarr[(int)type];
+        }
+    };
+
+    Parser(std::function<std::string()> fnReadLine)
+        : fnReadLine(fnReadLine), jsonIdx(0) {
+        json = fnReadLine();
     }
-};
 
-
-
-class CMyJsonParser {
-public:
-    CMyJsonParser(std::function<std::string()> a_fnReadLine)
-        : m_fnReadLine(a_fnReadLine), m_nJsonIdx(0) {
-        m_strJson = m_fnReadLine();
-    }
-
-    bool IsWhiteCase(const char a_char) {
+    bool isWhiteCase(const char a_char) {
         switch (a_char) {
         case ' ':
         case '\t':
         case '\n':
         case '\r':
             return true;
-        }
 
-        return false;
+        default:
+            return false;
+        }
     }
 
-    SMyJsonToken::TokenType GetQuotedStringTokenType() {
-        while (m_nJsonIdx < m_strJson.length()) {
-            const char c = m_strJson[m_nJsonIdx++];
+    Token::Type getQuotedStringTokenType() {
+        while (jsonIdx < json.length()) {
+            const char c = json[jsonIdx++];
 
-            if (IsWhiteCase(c)) {
+            if (isWhiteCase(c)) {
                 continue;
             }
 
             switch (c) {
             case ':':
                 // @todo_llasek: double :
-                return SMyJsonToken::TokenType::ObjectName;
+                return Token::Type::ObjectName;
 
             default:
-                m_nJsonIdx--;
-                return SMyJsonToken::TokenType::StringValue;
+                jsonIdx--;
+                return Token::Type::StringValue;
             }
         }
 
-        return SMyJsonToken::TokenType::StringValue;
+        return Token::Type::StringValue;
     }
 
-    SMyJsonToken GetQuotedStringToken() {
+    Token getQuotedStringToken() {
 #ifdef WITH_SSTREAM
         std::stringstream ss;
 #else
         std::string str;
 #endif
-        bool bEscape = false;
+        bool isEscaped = false;
 
-        while (m_nJsonIdx < m_strJson.length()) {
-            const char c = m_strJson[m_nJsonIdx++];
+        while (jsonIdx < json.length()) {
+            const char c = json[jsonIdx++];
 
             switch (c) {
             case '\\':
-                if (bEscape) {
-                    bEscape = false;
+                if (isEscaped) {
+                    isEscaped = false;
 #ifdef WITH_SSTREAM
                     ss << c;
 #else
                     str += c;
 #endif
                 } else {
-                    bEscape = true;
+                    isEscaped = true;
                 }
 
                 break;
 
             case '"':
-                if (bEscape) {
-                    bEscape = false;
+                if (isEscaped) {
+                    isEscaped = false;
 #ifdef WITH_SSTREAM
                     ss << c;
 #else
@@ -428,22 +296,22 @@ public:
 #endif
                 } else {
 #ifdef WITH_SSTREAM
-                    return SMyJsonToken { GetQuotedStringTokenType(), ss.str() };
+                    return Token { getQuotedStringTokenType(), ss.str() };
 #else
-                    return SMyJsonToken { GetQuotedStringTokenType(), str };
+                    return Token { getQuotedStringTokenType(), str };
 #endif
                 }
 
                 break;
 
             default:
-                if (bEscape) {
+                if (isEscaped) {
 #ifdef WITH_SSTREAM
                     ss << '\\';
 #else
                     str += c;
 #endif
-                    bEscape = false;
+                    isEscaped = false;
                 }
 
 #ifdef WITH_SSTREAM
@@ -456,79 +324,77 @@ public:
         }
 
 #ifdef WITH_SSTREAM
-        return SMyJsonToken { GetQuotedStringTokenType(), ss.str() };
+        return Token { getQuotedStringTokenType(), ss.str() };
 #else
-        return SMyJsonToken { GetQuotedStringTokenType(), str };
+        return Token { getQuotedStringTokenType(), str };
 #endif
     }
 
-    SMyJsonToken ParseValueToken(std::string_view a_strValue) {
+    Token parseValueToken(std::string_view value) {
         // special values:
         static struct {
-            std::string_view m_str;
-            SMyJsonToken::TokenType m_tt;
+            std::string_view value;
+            Token::Type type;
         } SarrSpecialTokens[] = {
-            { "null", SMyJsonToken::TokenType::NullValue },
-            { "true", SMyJsonToken::TokenType::TrueValue },
-            { "false", SMyJsonToken::TokenType::FalseValue },
+            { "null", Token::Type::NullValue },
+            { "true", Token::Type::TrueValue },
+            { "false", Token::Type::FalseValue },
         };
 
         for (auto st : SarrSpecialTokens) {
-            if ((st.m_str.length() == a_strValue.length()) && (std::equal(a_strValue.begin(), a_strValue.end(), st.m_str.begin(), st.m_str.end(),
-            [](char c1, char c2) {
-            return (tolower(c1) == tolower(c2));
-            }))) {
-                return SMyJsonToken{ st.m_tt };
+            if (st.value.length() == value.length()
+            && std::equal(value.begin(), value.end(), st.value.begin(), st.value.end(), [](char c1, char c2) { return (tolower(c1) == tolower(c2)); })) {
+                return Token{st.type};
             }
         }
 
         // int/double/string value:
-        SMyJsonToken::TokenType tt{ SMyJsonToken::TokenType::IntValue };
+        Token::Type tokenType{Token::Type::IntValue};
 
-        for (size_t nIdx = 0; nIdx < a_strValue.length(); ++nIdx) {
-            auto c = a_strValue[nIdx];
+        for (size_t nIdx = 0; nIdx < value.length(); ++nIdx) {
+            auto c = value[nIdx];
 
             switch (c) {
             case '0'...'9':
                 break;
 
             case '.':
-                if ((tt == SMyJsonToken::TokenType::IntValue) && (nIdx + 1 < a_strValue.length())) {
-                    tt = SMyJsonToken::TokenType::DoubleValue;
+                if ((tokenType == Token::Type::IntValue) && (nIdx + 1 < value.length())) {
+                    tokenType = Token::Type::DoubleValue;
                 } else {
-                    tt = SMyJsonToken::TokenType::StringValue;
+                    tokenType = Token::Type::StringValue;
                 }
 
                 break;
 
             default:
-                tt = SMyJsonToken::TokenType::StringValue;
+                tokenType = Token::Type::StringValue;
                 break;
             }
         }
 
-        return SMyJsonToken{ tt, std::string(a_strValue)};
+        return Token{tokenType, std::string(value)};
     }
 
-    SMyJsonToken GetValueToken() {
+    Token getValueToken() {
 #ifdef WITH_SSTREAM
         std::stringstream ss;
 #else
         std::string str;
 #endif
 
-        while (m_nJsonIdx < m_strJson.length()) {
-            const char c = m_strJson[m_nJsonIdx++];
+        while (jsonIdx < json.length()) {
+            const char c = json[jsonIdx++];
 
-            if (IsWhiteCase(c) || c == ',' || c == '}' || c == ']') {
+            if (isWhiteCase(c) || c == ',' || c == '}' || c == ']') {
                 if (c == '}' || c == ']') {
-                    m_nJsonIdx--;
+                    jsonIdx--;
                 }
 
 #ifdef WITH_SSTREAM
-                return ParseValueToken(ss.str());
+                return parseValueToken(ss.str());
 #else
-                return ParseValueToken(str);
+                return parseValueToken(str);
 #endif
             }
 
@@ -540,72 +406,67 @@ public:
         }
 
 #ifdef WITH_SSTREAM
-        return ParseValueToken(ss.str());
+        return parseValueToken(ss.str());
 #else
-        return ParseValueToken(str);
+        return parseValueToken(str);
 #endif
     }
 
-    SMyJsonToken GetNextToken() {
-        auto nJsonLen = m_strJson.length();
+    Token getNextToken() {
+        auto nJsonLen = json.length();
 
         do {
-            while (m_nJsonIdx < nJsonLen) {
-                const char c = m_strJson[m_nJsonIdx++];
+            while (jsonIdx < nJsonLen) {
+                const char c = json[jsonIdx++];
 
-                if (IsWhiteCase(c)) {
+                if (isWhiteCase(c)) {
                     continue;
                 }
 
                 switch (c) {
                 case ',':
-                    return SMyJsonToken{ SMyJsonToken::TokenType::Comma };
+                    return Token{Token::Type::Comma};
 
                 case '{':
-                    return SMyJsonToken{ SMyJsonToken::TokenType::NewObject };
+                    return Token{Token::Type::NewObject};
 
                 case '}':
-                    return SMyJsonToken{ SMyJsonToken::TokenType::EndObject };
+                    return Token{Token::Type::EndObject};
 
                 case '[':
-                    return SMyJsonToken{ SMyJsonToken::TokenType::NewArray };
+                    return Token{Token::Type::NewArray};
 
                 case ']':
-                    return SMyJsonToken{ SMyJsonToken::TokenType::EndArray };
+                    return Token{Token::Type::EndArray};
 
                 case '"':
-                    return GetQuotedStringToken();
+                    return getQuotedStringToken();
 
                 default:
-                    m_nJsonIdx--;
-                    return GetValueToken();
+                    jsonIdx--;
+                    return getValueToken();
                 }
             }
 
-            m_strJson = m_fnReadLine();
-            nJsonLen = m_strJson.length();
-            m_nJsonIdx = 0;
+            json = fnReadLine();
+            nJsonLen = json.length();
+            jsonIdx = 0;
         } while (nJsonLen);
 
-        return SMyJsonToken{ SMyJsonToken::TokenType::Eof };
+        return Token{Token::Type::Eof};
     }
 
-    bool JsonAddNode(std::stack<my_shared_ptr<CMyJsonNode>>& a_stack, my_shared_ptr<CMyJsonNode> a_jn, SMyJsonToken& a_jtObjName) {
-        if (a_stack.empty()) {
-            a_stack.push(a_jn);
+    bool jsonAddNode(std::stack<Node::ptr>& stack, Node::ptr node, Token& nodeName) {
+        if (stack.empty()) {
+            stack.push(node);
         } else {
-            auto jnParent = a_stack.top();
+            auto parentNode = stack.top();
 
-            switch (jnParent.m_ptr->GetType()) {
-            case CMyJsonNode::ValueType::Object: {
-                CMyJsonNodeObject* jnObject = (CMyJsonNodeObject*)jnParent.m_ptr.get();
-                jnObject->AddNode(a_jn);
-            }
-            break;
-
-            case CMyJsonNode::ValueType::Array: {
-                CMyJsonNodeArray* jnArray = (CMyJsonNodeArray*)jnParent.m_ptr.get();
-                jnArray->AddNode(a_jn);
+            switch (parentNode->getType()) {
+            case Node::ValueType::Object:
+            case Node::ValueType::Array: {
+                VectorNode* vectorNode = static_cast<VectorNode*>(parentNode.ptr.get());
+                vectorNode->addNode(node);
             }
             break;
 
@@ -613,10 +474,10 @@ public:
                 return false;
             }
 
-            switch (a_jn.m_ptr->GetType()) {
-            case CMyJsonNode::ValueType::Object:
-            case CMyJsonNode::ValueType::Array:
-                a_stack.push(a_jn);
+            switch (node->getType()) {
+            case Node::ValueType::Object:
+            case Node::ValueType::Array:
+                stack.push(node);
                 break;
 
             default:
@@ -624,150 +485,160 @@ public:
             }
         }
 
-        a_jtObjName.m_eType = SMyJsonToken::TokenType::Invalid;
-        a_jtObjName.m_strValue.clear();
+        nodeName.type = Token::Type::Invalid;
+        nodeName.value.clear();
         return true;
     }
 
-    my_shared_ptr<CMyJsonNode> JsonRmNode(std::stack<my_shared_ptr<CMyJsonNode>>& a_stack, SMyJsonToken a_jtObjName) {
-        if ((a_stack.empty()) || (a_jtObjName.m_eType != SMyJsonToken::TokenType::Invalid)) {
-            return my_shared_ptr<CMyJsonNode> {};
+    Node::ptr jsonRmNode(std::stack<Node::ptr>& stack, Token nodeName) {
+        if ((stack.empty()) || (nodeName.type != Token::Type::Invalid)) {
+            return {};
         }
 
-        auto jn = a_stack.top();
-        a_stack.pop();
+        auto jn = stack.top();
+        stack.pop();
         return jn;
     }
 
-    my_shared_ptr<CMyJsonNode> Parse() {
-        std::stack<my_shared_ptr<CMyJsonNode>> stack;
-        my_shared_ptr<CMyJsonNode> curNode {};
-        SMyJsonToken jtObjName{};
-        bool bInvalid = false;
+    Node::ptr parse() {
+        std::stack<Node::ptr> stack;
+        Node::ptr curNode {};
+        Token nodeName{};
+        bool isInvalid = false;
 
-        for (; !bInvalid;) {
-            if ((curNode.m_ptr) && (stack.empty())) {
+        for (; !isInvalid;) {
+            if (curNode && stack.empty()) {
                 break;
             }
 
-            auto jt = GetNextToken();
+            auto token = getNextToken();
 
             // @todo_llasek: DBG
-            // std::cout << SMyJsonToken::GetTokenType( jt.m_eType ) << '\n';
+            // std::cout << Token::GetTokenType( jt.m_eType ) << '\n';
 
-            if ((curNode.m_ptr) && (stack.empty())) {
-                if (jt.m_eType == SMyJsonToken::TokenType::Eof) {
+            if (curNode && stack.empty()) {
+                if (token.type == Token::Type::Eof) {
                     break;
                 }
 
-                bInvalid = true;
+                isInvalid = true;
                 break;
             }
 
-            switch (jt.m_eType) {
-            case SMyJsonToken::TokenType::ObjectName:
-                if (jtObjName.m_eType == jt.m_eType) {
-                    bInvalid = true;
+            switch (token.type) {
+            case Token::Type::ObjectName:
+
+                // object name can't follow itself
+                if (nodeName.type == token.type) {
+                    isInvalid = true;
                 }
 
-                jtObjName = jt;
+                nodeName = token;
                 break;
 
-            case SMyJsonToken::TokenType::NullValue:
-                curNode.m_ptr = std::make_shared<CMyJsonNodeNull>(jtObjName.m_strValue);
-                bInvalid = !JsonAddNode(stack, curNode, jtObjName);
+            case Token::Type::NullValue:
+                curNode.ptr = std::make_shared<Node>(nodeName.value, Node::ValueType::Null);
+                isInvalid = !jsonAddNode(stack, curNode, nodeName);
                 break;
 
-            case SMyJsonToken::TokenType::TrueValue:
-                curNode.m_ptr = std::make_shared<CMyJsonNodeBool>(jtObjName.m_strValue, true);
-                bInvalid = !JsonAddNode(stack, curNode, jtObjName);
+#ifdef JSON_WITH_BOOL
+            case Token::Type::TrueValue:
+                curNode.ptr = std::make_shared<BoolNode>(nodeName.value, true);
+                isInvalid = !jsonAddNode(stack, curNode, nodeName);
                 break;
 
-            case SMyJsonToken::TokenType::FalseValue:
-                curNode.m_ptr = std::make_shared<CMyJsonNodeBool>(jtObjName.m_strValue, false);
-                bInvalid = !JsonAddNode(stack, curNode, jtObjName);
+            case Token::Type::FalseValue:
+                curNode.ptr = std::make_shared<BoolNode>(nodeName.value, false);
+                isInvalid = !jsonAddNode(stack, curNode, nodeName);
+                break;
+#endif // JSON_WITH_BOOL
+
+#ifdef JSON_WITH_INT
+            case Token::Type::IntValue:
+                curNode.ptr = std::make_shared<IntNode>(nodeName.value, strtoll(token.value.c_str(), nullptr, 10));
+                isInvalid = !jsonAddNode(stack, curNode, nodeName);
+                break;
+#endif // JSON_WITH_INT
+
+#ifdef JSON_WITH_DOUBLE
+            case Token::Type::DoubleValue:
+                curNode.ptr = std::make_shared<DoubleNode>(nodeName.value, strtod(token.value.c_str(), nullptr));
+                isInvalid = !jsonAddNode(stack, curNode, nodeName);
+                break;
+#endif // JSON_WITH_DOUBLE
+
+#ifdef JSON_WITH_STRING
+            case Token::Type::StringValue:
+                curNode.ptr = std::make_shared<StringNode>(nodeName.value, token.value);
+                isInvalid = !jsonAddNode(stack, curNode, nodeName);
+                break;
+#endif // JSON_WITH_STRING
+
+            case Token::Type::NewObject:
+                curNode.ptr = std::make_shared<ObjectNode>(nodeName.value);
+                isInvalid = !jsonAddNode(stack, curNode, nodeName);
                 break;
 
-            case SMyJsonToken::TokenType::IntValue:
-                curNode.m_ptr = std::make_shared<CMyJsonNodeInt>(jtObjName.m_strValue, strtoll(jt.m_strValue.c_str(), nullptr, 10));
-                bInvalid = !JsonAddNode(stack, curNode, jtObjName);
+            case Token::Type::EndObject:
+                curNode = jsonRmNode(stack, nodeName);
+                isInvalid = ((!curNode.ptr) || (curNode.ptr->getType() != Node::ValueType::Object));
+                assert(isInvalid == false);      // @todo_llasek: DBG
                 break;
 
-            case SMyJsonToken::TokenType::DoubleValue:
-                curNode.m_ptr = std::make_shared<CMyJsonNodeDouble>(jtObjName.m_strValue, strtod(jt.m_strValue.c_str(), nullptr));
-                bInvalid = !JsonAddNode(stack, curNode, jtObjName);
+            case Token::Type::NewArray:
+                curNode.ptr = std::make_shared<ArrayNode>(nodeName.value);
+                isInvalid = !jsonAddNode(stack, curNode, nodeName);
                 break;
 
-            case SMyJsonToken::TokenType::StringValue:
-                curNode.m_ptr = std::make_shared<CMyJsonNodeString>(jtObjName.m_strValue, jt.m_strValue);
-                bInvalid = !JsonAddNode(stack, curNode, jtObjName);
+            case Token::Type::EndArray:
+                curNode = jsonRmNode(stack, nodeName);
+                isInvalid = ((!curNode.ptr) || (curNode.ptr->getType() != Node::ValueType::Array));
+                assert(isInvalid == false);      // @todo_llasek: DBG
                 break;
 
-            case SMyJsonToken::TokenType::NewObject:
-                curNode.m_ptr = std::make_shared<CMyJsonNodeObject>(jtObjName.m_strValue);
-                bInvalid = !JsonAddNode(stack, curNode, jtObjName);
-                break;
-
-            case SMyJsonToken::TokenType::EndObject:
-                curNode = JsonRmNode(stack, jtObjName);
-                bInvalid = ((!curNode.m_ptr) || (curNode.m_ptr->GetType() != CMyJsonNode::ValueType::Object));
-                assert(bInvalid == false);      // @todo_llasek: DBG
-                break;
-
-            case SMyJsonToken::TokenType::NewArray:
-                curNode.m_ptr = std::make_shared<CMyJsonNodeArray>(jtObjName.m_strValue);
-                bInvalid = !JsonAddNode(stack, curNode, jtObjName);
-                break;
-
-            case SMyJsonToken::TokenType::EndArray:
-                curNode = JsonRmNode(stack, jtObjName);
-                bInvalid = ((!curNode.m_ptr) || (curNode.m_ptr->GetType() != CMyJsonNode::ValueType::Array));
-                assert(bInvalid == false);      // @todo_llasek: DBG
-                break;
-
-            case SMyJsonToken::TokenType::Comma:
+            case Token::Type::Comma:
                 // @todo_llasek: implement corner cases like: subsequent commas, start with comma
-                bInvalid = ((stack.empty()) ||
-                            ((stack.top().m_ptr->GetType() != CMyJsonNode::ValueType::Object) && (stack.top().m_ptr->GetType() != CMyJsonNode::ValueType::Array)));
+                isInvalid = (stack.empty() ||
+                             (stack.top().ptr->getType() != Node::ValueType::Object && stack.top().ptr->getType() != Node::ValueType::Array));
                 break;
 
-            case SMyJsonToken::TokenType::Eof:
-                bInvalid = true;
+            case Token::Type::Eof:
+                isInvalid = true;
                 break;
 
-            case SMyJsonToken::TokenType::Invalid:
+            case Token::Type::Invalid:
             default:
-                return my_shared_ptr<CMyJsonNode> {};
+                return {};
             }
         }
 
-        if (bInvalid) {
-            return my_shared_ptr<CMyJsonNode> {};
+        if (isInvalid) {
+            return {};
         }
 
         return curNode;
     }
 
-protected:
-    std::function<std::string()> m_fnReadLine;
-    std::string m_strJson;
-    uint32_t m_nJsonIdx;
+    std::function<std::string()> fnReadLine;
+    std::string json;
+    uint32_t jsonIdx;
 };
 
-my_shared_ptr<CMyJsonNode> CMyJsonNode::Parse(std::string_view a_strJson)
+const Node::ptr Node::parse(std::string_view json)
 {
-    std::string strJson(a_strJson);
-    CMyJsonParser jp(
-    [&strJson]() {
+    std::string strJson(json);
+    Parser parser([&strJson]() {
         std::string str(strJson);
         strJson.clear();
         return str;
     });
-    return jp.Parse();
+    return parser.parse();
 }
 
-my_shared_ptr<CMyJsonNode> CMyJsonNode::Parse(std::function<std::string()> a_fnReadLine)
+const Node::ptr Node::parse(std::function<std::string()> fnReadLine)
 {
-    CMyJsonParser jp(a_fnReadLine);
-    return jp.Parse();
+    Parser parser(fnReadLine);
+    return parser.parse();
 }
+
+}   // namespace myjson

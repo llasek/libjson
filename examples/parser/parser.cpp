@@ -1,13 +1,13 @@
 /**
  * JSON parser example
- * (c) 2023 Łukasz Łasek
+ * (c) 2023-2024 Łukasz Łasek
  */
 #include <iostream>
 #include <string_view>
 
 #include "myjson.h"
 
-static std::string_view Sg_strJson1[] = {
+static std::string_view json1[] = {
     "\n",
     "\n",
     "{\n",
@@ -31,117 +31,141 @@ static std::string_view Sg_strJson1[] = {
     "}\n",
 };
 
-void Json1Print( my_shared_ptr< CMyJsonNode > a_json )
+std::ostream& operator<<(std::ostream& os, myjson::Node::ValueType jsonType)
 {
-    if( !a_json )
-    {
+    switch (jsonType) {
+    case myjson::Node::ValueType::Invalid: return os << "Invalid";
+
+    case myjson::Node::ValueType::Null: return os << "Null";
+
+    case myjson::Node::ValueType::Object: return os << "Object";
+
+    case myjson::Node::ValueType::Array: return os << "Array";
+
+#ifdef JSON_WITH_BOOL
+    case myjson::Node::ValueType::Bool: return os << "Bool";
+#endif
+
+#ifdef JSON_WITH_INT
+    case myjson::Node::ValueType::Int: return os << "Int";
+#endif
+
+#ifdef JSON_WITH_DOUBLE
+    case myjson::Node::ValueType::Double: return os << "Double";
+#endif
+
+#ifdef JSON_WITH_STRING
+    case myjson::Node::ValueType::String: return os << "String";
+#endif
+
+    default: return os << "Unknown";
+    }
+}
+
+void json1Print(myjson::Node::ptr json)
+{
+    if (!json) {
         std::cout << "invalid json\n";
         return;
     }
 
-    std::cout << (int)(*a_json)[ "key4" ].GetType() << '\n';
-    std::cout << (int)(*a_json)[ 3 ].GetType() << '\n';
-    std::cout << (int)(*a_json)[ "key4" ][ 0 ].GetType() << '\n';
-    std::cout << (int)(*a_json)[ "key4" ][ 1 ].GetType() << '\n';
+    std::cout << json["key4"]->getType() << '\n';
+    std::cout << json[3]->getType() << '\n';
+    std::cout << json["key4"][0]->getType() << '\n';
+    std::cout << json["key4"][1]->getType() << '\n';
+    std::cout << json["key4"][2]->getType() << '\n';
+    std::cout << json["key4"][3]->getType() << '\n';
+    std::cout << json["key4"][4]->getType() << '\n';
+    std::cout << json["key4"][5]->getType() << '\n';
 
-    std::cout << (std::string_view)(*a_json)[ "key4" ][ 5 ][ "key10" ] << '\n';
-    std::cout << (int)(*a_json)[ "key4" ][ 5 ][ 1 ] << '\n';
-    std::cout << (std::string_view)(*a_json)[ "key4" ][ 5 ][ 2 ] << '\n';
+    std::cout << *json["key4"][5]["key10"]->getString() << '\n';
+    std::cout << *json["key4"][5][1]->getInt() << '\n';
+    std::cout << *json["key4"][5][2]->getString() << '\n';
 
-    std::cout << (int)(*a_json)[ "key4" ][ 2 ].GetType() << '\n';
-    std::cout << (int)(*a_json)[ "key4" ][ 3 ].GetType() << '\n';
-    std::cout << (int)(*a_json)[ "key4" ][ 4 ].GetType() << '\n';
-    std::cout << (int)(*a_json)[ "key4" ][ 5 ].GetType() << '\n';
-
-    std::cout << (int)(*a_json)[ "key_json" ].GetType() << '\n';
-    std::cout << (std::string_view)(*a_json)[ "key_json" ] << '\n';
+    std::cout << json["key_json"]->getType() << '\n';
+    std::cout << *json["key_json"]->getString() << '\n';
 
 
     std::cout << "--- Parse the inner json ---\n";
-    auto jn = CMyJsonNode::Parse( (std::string_view)(*a_json)[ "key_json" ]);
-    std::cout << (std::string_view)(*jn)[ "keyA" ] << '\n';
-    std::cout << (std::string_view)(*jn)[ "keyB" ][ 0 ] << '\n';
+    auto innerJson = myjson::Node::parse(*json["key_json"]->getString());
+    std::cout << *innerJson["keyA"]->getString() << '\n';
+    std::cout << *innerJson["keyB"][0]->getString() << '\n';
 }
 
-void Json2Print( my_shared_ptr< CMyJsonNode > a_json )
+void json2Print(myjson::Node::ptr json)
 {
-    if( !a_json )
-    {
+    if (!json) {
         std::cout << "invalid json\n";
         return;
     }
 
-    std::cout << (int)(*a_json)[ "key40" ].GetType() << '\n';
-    std::cout << (int)(*a_json)[ 3 ].GetType() << '\n';
-    std::cout << (int)(*a_json)[ "key40" ][ 0 ].GetType() << '\n';
-    std::cout << (int)(*a_json)[ "key40" ][ 1 ].GetType() << '\n';
+    std::cout << json["key40"]->getType() << '\n';
+    std::cout << json[3]->getType() << '\n';
+    std::cout << json["key40"][0]->getType() << '\n';
+    std::cout << json["key40"][1]->getType() << '\n';
+    std::cout << json["key40"][2]->getType() << '\n';
+    std::cout << json["key40"][3]->getType() << '\n';
+    std::cout << json["key40"][4]->getType() << '\n';
+    std::cout << json["key40"][5]->getType() << '\n';
 
-    std::cout << (std::string_view)(*a_json)[ "key40" ][ 5 ][ "key20" ] << '\n';
-    std::cout << (int)(*a_json)[ "key40" ][ 5 ][ 1 ] << '\n';
-    std::cout << (std::string_view)(*a_json)[ "key40" ][ 5 ][ 2 ] << '\n';
+    std::cout << *json["key40"][5]["key20"]->getString() << '\n';
+    std::cout << *json["key40"][5][1]->getInt() << '\n';
+    std::cout << *json["key40"][5][2]->getString() << '\n';
 
-    std::cout << (int)(*a_json)[ "key40" ][ 2 ].GetType() << '\n';
-    std::cout << (int)(*a_json)[ "key40" ][ 3 ].GetType() << '\n';
-    std::cout << (int)(*a_json)[ "key40" ][ 4 ].GetType() << '\n';
-    std::cout << (int)(*a_json)[ "key40" ][ 5 ].GetType() << '\n';
-
-    std::cout << (int)(*a_json)[ "key_json2" ].GetType() << '\n';
-    std::cout << (std::string_view)(*a_json)[ "key_json2" ] << '\n';
+    std::cout << json["key_json2"]->getType() << '\n';
+    std::cout << *json["key_json2"]->getString() << '\n';
 
 
     std::cout << "--- Parse the inner json ---\n";
-    auto jn = CMyJsonNode::Parse( (std::string_view)(*a_json)[ "key_json2" ]);
-    std::cout << (std::string_view)(*jn)[ "keyC" ] << '\n';
-    std::cout << (std::string_view)(*jn)[ "keyD" ][ 0 ] << '\n';
+    auto innerJson = myjson::Node::parse(*json["key_json2"]->getString());
+    std::cout << *innerJson["keyC"]->getString() << '\n';
+    std::cout << *innerJson["keyD"][0]->getString() << '\n';
 }
 
-void Parse1()
+void parse1()
 {
-    std::cout << "--- Parse1() ---\n";
+    std::cout << "--- parse1() ---\n";
     std::cout << "--- First json ---\n";
 
-    std::string strJson( Sg_strJson1[ 0 ]);
-    size_t nJsonLen = sizeof( Sg_strJson1 ) / sizeof( Sg_strJson1[ 0 ]);
-    for( size_t idx = 1; idx < nJsonLen; idx++ )
-    {
-        strJson += Sg_strJson1[ idx ];
+    std::string strJson(json1[0]);
+    size_t jsonLines = sizeof(json1) / sizeof(json1[0]);
+
+    for (size_t line = 0; line < jsonLines; line++) {
+        strJson += json1[line];
     }
 
-    auto json = CMyJsonNode::Parse( strJson );
-
-    Json1Print( json );
+    auto json = myjson::Node::parse(strJson);
+    json1Print(json);
 
 }
 
-void Parse2()
+void parse2()
 {
-    std::cout << "--- Parse2() ---\n";
+    std::cout << "--- parse2() ---\n";
     std::cout << "--- First json ---\n";
 
-    size_t nJsonLen = sizeof( Sg_strJson1 ) / sizeof( Sg_strJson1[ 0 ]);
-    size_t nJsonLn = 0;
-    auto json = CMyJsonNode::Parse(
-        [ &nJsonLn, nJsonLen ]()
-        {
-            return nJsonLn < nJsonLen ? std::string( Sg_strJson1[ nJsonLn++ ]) : std::string();
-        });
+    size_t jsonLines = sizeof(json1) / sizeof(json1[0]);
+    size_t currentLine = 0;
+    auto json = myjson::Node::parse([&currentLine, jsonLines]() {
+        return currentLine < jsonLines ? std::string(json1[currentLine++]) : std::string();
+    });
 
-    std::cout << "--- parsed lines: " << nJsonLn << " ---\n";
-    Json1Print( json );
+    std::cout << "--- parsed lines: " << currentLine << " ---\n";
+    json1Print(json);
 
-    json = CMyJsonNode::Parse(
-        [ &nJsonLn, nJsonLen ]()
-        {
-            return nJsonLn < nJsonLen ? std::string( Sg_strJson1[ nJsonLn++ ]) : std::string();
-        });
-    
     std::cout << "--- Next json ---\n";
-    Json2Print( json );
+
+    json = myjson::Node::parse([&currentLine, jsonLines]() {
+        return currentLine < jsonLines ? std::string(json1[currentLine++]) : std::string();
+    });
+
+    std::cout << "--- parsed lines: " << currentLine << " ---\n";
+    json2Print(json);
 }
 
-int main( int argc, const char *argv[] )
+int main(int argc, const char* argv[])
 {
-    Parse1();
-    Parse2();
+    parse1();
+    parse2();
     return 0;
 }
