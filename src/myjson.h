@@ -17,9 +17,18 @@
     #define JSON_WITH_STRING
 #endif // JSON_WITHOUT_STRING
 
+#ifndef JSON_WITHOUT_OPTIONAL
+    #define JSON_WITH_OPTIONAL
+#endif // JSON_WITHOUT_OPTIONAL
+#ifndef JSON_WITHOUT_DEFAULT
+    #define JSON_WITH_DEFAULT
+#endif // JSON_WITHOUT_DEFAULT
+
 #include <functional>
 #include <memory>
-#include <optional>
+#ifdef JSON_WITH_OPTIONAL
+    #include <optional>
+#endif // JSON_WITH_OPTIONAL
 #include <string>
 #include <string_view>
 
@@ -103,6 +112,8 @@ public:
 
     ValueType getType() const;
     std::string_view getKey() const;
+
+#ifdef JSON_WITH_OPTIONAL
 #ifdef JSON_WITH_BOOL
     std::optional<bool> getBool() const;
 #endif // JSON_WITH_BOOL
@@ -115,6 +126,22 @@ public:
 #ifdef JSON_WITH_STRING
     std::optional<std::string_view> getString() const;
 #endif // JSON_WITH_STRING
+#endif // JSON_WITH_OPTIONAL
+
+#ifdef JSON_WITH_DEFAULT
+#ifdef JSON_WITH_BOOL
+    bool getBool(bool defaultValue) const;
+#endif // JSON_WITH_BOOL
+#ifdef JSON_WITH_INT
+    int getInt(int defaultValue) const;
+#endif // JSON_WITH_INT
+#ifdef JSON_WITH_DOUBLE
+    double getDouble(double defaultValue) const;
+#endif // JSON_WITH_DOUBLE
+#ifdef JSON_WITH_STRING
+    std::string_view getString(std::string_view defaultValue) const;
+#endif // JSON_WITH_STRING
+#endif // JSON_WITH_DEFAULT
 
     const ptr operator[](int idx) const;
     const ptr operator[](std::string_view key) const;

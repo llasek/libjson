@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <assert.h>
 #include <stack>
-#include <stdexcept>
 #include <string>
 #include <string_view>
 
@@ -113,6 +112,7 @@ std::string_view Node::getKey() const
     return key;
 }
 
+#ifdef JSON_WITH_OPTIONAL
 #ifdef JSON_WITH_BOOL
 std::optional<bool> Node::getBool() const {
     if (type == ValueType::Bool) {
@@ -148,6 +148,45 @@ std::optional<std::string_view> Node::getString() const {
     return {};
 }
 #endif // JSON_WITH_STRING
+#endif // JSON_WITH_OPTIONAL
+
+#ifdef JSON_WITH_DEFAULT
+#ifdef JSON_WITH_BOOL
+bool Node::getBool(bool defaultValue) const {
+    if (type == ValueType::Bool) {
+        return static_cast<const BoolNode*>(this)->value;
+    }
+    return defaultValue;
+}
+#endif // JSON_WITH_BOOL
+
+#ifdef JSON_WITH_INT
+int Node::getInt(int defaultValue) const {
+    if (type == ValueType::Int) {
+        return static_cast<const IntNode*>(this)->value;
+    }
+    return defaultValue;
+}
+#endif // JSON_WITH_INT
+
+#ifdef JSON_WITH_DOUBLE
+double Node::getDouble(double defaultValue) const {
+    if (type == ValueType::Double) {
+        return static_cast<const DoubleNode*>(this)->value;
+    }
+    return defaultValue;
+}
+#endif // JSON_WITH_DOUBLE
+
+#ifdef JSON_WITH_STRING
+std::string_view Node::getString(std::string_view defaultValue) const {
+    if (type == ValueType::String) {
+        return static_cast<const StringNode*>(this)->value;
+    }
+    return defaultValue;
+}
+#endif // JSON_WITH_STRING
+#endif // JSON_WITH_DEFAULT
 
 const Node::ptr Node::operator[](int idx) const
 {

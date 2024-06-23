@@ -115,6 +115,9 @@ void json2Print(myjson::Node::ptr json)
     std::cout << json["key_json2"]->getType() << '\n';
     std::cout << *json["key_json2"]->getString() << '\n';
 
+    std::cout << (json["missing_key"] ? (const char*)"has missing_key" : (const char*)"no missing_key") << '\n';
+    std::cout << json["key40"][5][1]->getInt(-1) << '\n';
+    std::cout << json["key40"][5][1]->getString("oops") << '\n';
 
     std::cout << "--- Parse the inner json ---\n";
     auto innerJson = myjson::Node::parse(*json["key_json2"]->getString());
