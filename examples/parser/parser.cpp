@@ -31,31 +31,31 @@ static std::string_view json1[] = {
     "}\n",
 };
 
-std::ostream& operator<<(std::ostream& os, myjson::Node::ValueType jsonType)
+std::ostream& operator<<(std::ostream& os, myjson::Node::Type jsonType)
 {
     switch (jsonType) {
-    case myjson::Node::ValueType::Invalid: return os << "Invalid";
+    case myjson::Node::Type::Invalid: return os << "Invalid";
 
-    case myjson::Node::ValueType::Null: return os << "Null";
+    case myjson::Node::Type::Null: return os << "Null";
 
-    case myjson::Node::ValueType::Object: return os << "Object";
+    case myjson::Node::Type::Object: return os << "Object";
 
-    case myjson::Node::ValueType::Array: return os << "Array";
+    case myjson::Node::Type::Array: return os << "Array";
 
 #ifdef JSON_WITH_BOOL
-    case myjson::Node::ValueType::Bool: return os << "Bool";
+    case myjson::Node::Type::Bool: return os << "Bool";
 #endif
 
 #ifdef JSON_WITH_INT
-    case myjson::Node::ValueType::Int: return os << "Int";
+    case myjson::Node::Type::Int: return os << "Int";
 #endif
 
 #ifdef JSON_WITH_DOUBLE
-    case myjson::Node::ValueType::Double: return os << "Double";
+    case myjson::Node::Type::Double: return os << "Double";
 #endif
 
 #ifdef JSON_WITH_STRING
-    case myjson::Node::ValueType::String: return os << "String";
+    case myjson::Node::Type::String: return os << "String";
 #endif
 
     default: return os << "Unknown";
@@ -166,9 +166,31 @@ void parse2()
     json2Print(json);
 }
 
+void create1()
+{
+    auto root = myjson::Node::createRootNode();
+    root->addNode("int0", 100);
+    root->addNode("int1", 101);
+    root->addNode({}, 102);
+    root->addNode("bool0", false);
+    root->addNode("bool1", true);
+    root->addNode(myjson::Node::Type::Null, "null0");
+    root->addNode(myjson::Node::Type::Null);
+    auto json{std::move(root->toString())};
+
+    std::cout << "--- create1() ---\n";
+    std::cout << json << '\n';
+    auto arr0 = root->addNode(myjson::Node::Type::Array, "arr0");
+    auto arr1 = root->addNode(myjson::Node::Type::Array);
+    json = std::move(root->toString());
+    std::cout << json << '\n';
+}
+
 int main(int argc, const char* argv[])
 {
     parse1();
     parse2();
+
+    create1();
     return 0;
 }

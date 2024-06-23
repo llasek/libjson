@@ -4,61 +4,239 @@
  */
 #include "myjson.h"
 
-#include <algorithm>
 #include <assert.h>
+#include <algorithm>
 #include <stack>
 #include <string>
 #include <string_view>
 
-#ifndef NO_SSTREAM
-    #define WITH_SSTREAM
-#endif
-
-#ifdef WITH_SSTREAM
+#ifdef JSON_WITH_SSTREAM
     #include <iostream>
     #include <sstream>
+
+    using TStringBuf = std::stringstream;
+#else
+    using TStringBuf = std::string;
 #endif
 
 namespace myjson {
 
+template<class TBuf>
+std::string helper_printBuf(TBuf& buf)
+{
+    return buf.str();
+}
+
+template<>
+std::string helper_printBuf(std::string& buf)
+{
+    return buf;
+}
+
+template<class TValue, class TBuf>
+void helper_appendBuf(TValue value, TBuf& buf)
+{
+    buf << value;
+}
+
+template<class TValue>
+void helper_appendBuf(TValue value, std::string& buf)
+{
+    buf += value;
+}
+
+
+
 #ifdef JSON_WITH_BOOL
 class BoolNode : public Node {
 public:
-    BoolNode(std::string_view key, bool value) : Node(key, ValueType::Bool), value(value) {}
+    BoolNode(std::string_view key, bool value) : Node(key, Type::Bool), value(value) {}
     bool value;
 };
+
+template<class TBuf>
+void helper_boolNodeToString(const Node* node, TBuf& buf)
+{
+    auto value = static_cast<const BoolNode*>(node)->value;
+    helper_appendBuf(value ? "true" : "false", buf);
+};
+
+#ifdef JSON_WITH_OPTIONAL
+std::optional<bool> Node::getBool() const {
+    if (type == Type::Bool) {
+        return {static_cast<const BoolNode*>(this)->value};
+    }
+    return {};
+}
+#endif // JSON_WITH_OPTIONAL
+
+#ifdef JSON_WITH_DEFAULT
+bool Node::getBool(bool defaultValue) const {
+    if (type == Type::Bool) {
+        return static_cast<const BoolNode*>(this)->value;
+    }
+    return defaultValue;
+}
+#endif // JSON_WITH_DEFAULT
+
+Node::ptr Node::addNode(std::string_view key, bool value)
+{
+    return addNode([key, value]() -> Node::ptr {
+        return {std::make_shared<BoolNode>(key, value)};
+    });
+}
 #endif // JSON_WITH_BOOL
+
+
 
 #ifdef JSON_WITH_INT
 class IntNode : public Node {
 public:
-    IntNode(std::string_view key, long long value) : Node(key, ValueType::Int), value(value) {}
+    IntNode(std::string_view key, long long value) : Node(key, Type::Int), value(value) {}
     long long value;
 };
+
+template<class TBuf>
+void helper_intNodeToString(const Node* node, TBuf& buf)
+{
+    auto value = static_cast<const IntNode*>(node)->value;
+    helper_appendBuf(std::move(std::to_string(value)), buf);
+};
+
+#ifdef JSON_WITH_OPTIONAL
+std::optional<int> Node::getInt() const {
+    if (type == Type::Int) {
+        return {static_cast<const IntNode*>(this)->value};
+    }
+    return {};
+}
+#endif // JSON_WITH_OPTIONAL
+
+#ifdef JSON_WITH_DEFAULT
+int Node::getInt(int defaultValue) const {
+    if (type == Type::Int) {
+        return static_cast<const IntNode*>(this)->value;
+    }
+    return defaultValue;
+}
+#endif // JSON_WITH_DEFAULT
+
+Node::ptr Node::addNode(std::string_view key, int value)
+{
+    return addNode([key, value]() -> Node::ptr {
+        return {std::make_shared<IntNode>(key, value)};
+    });
+}
 #endif // JSON_WITH_INT
+
+
 
 #ifdef JSON_WITH_DOUBLE
 class DoubleNode : public Node {
 public:
-    DoubleNode(std::string_view key, double value) : Node(key, ValueType::Double), value(value) {}
+    DoubleNode(std::string_view key, double value) : Node(key, Type::Double), value(value) {}
     double value;
 };
+
+template<class TBuf>
+void helper_doubleNodeToString(const Node* node, TBuf& buf)
+{
+    auto value = static_cast<const DoubleNode*>(node)->value;
+    helper_appendBuf(std::move(std::to_string(value)), buf);
+};
+
+#ifdef JSON_WITH_OPTIONAL
+std::optional<double> Node::getDouble() const {
+    if (type == Type::Double) {
+        return {static_cast<const DoubleNode*>(this)->value};
+    }
+    return {};
+}
+#endif // JSON_WITH_OPTIONAL
+
+#ifdef JSON_WITH_DEFAULT
+double Node::getDouble(double defaultValue) const {
+    if (type == Type::Double) {
+        return static_cast<const DoubleNode*>(this)->value;
+    }
+    return defaultValue;
+}
+#endif // JSON_WITH_DEFAULT
+
+Node::ptr Node::addNode(std::string_view key, double value)
+{
+    return addNode([key, value]() -> Node::ptr {
+        return {std::make_shared<DoubleNode>(key, value)};
+    });
+}
 #endif // JSON_WITH_DOUBLE
+
+
 
 #ifdef JSON_WITH_STRING
 class StringNode : public Node {
 public:
-    StringNode(std::string_view key, std::string value) : Node(key, ValueType::String), value(value) {}
+    StringNode(std::string_view key, std::string_view value) : Node(key, Type::String), value(value) {}
     std::string value;
 };
+
+template<class TBuf>
+void helper_stringNodeToString(const Node* node, TBuf& buf)
+{
+    const auto& value = static_cast<const StringNode*>(node)->value;
+    std::string escapedValue;
+    escapedValue.reserve(value.size());
+    for (auto c : value) {
+        switch (c) {
+        case '\"':
+        case '\\':
+            escapedValue += '\\';
+            break;
+
+        default:
+            break;
+        }
+        escapedValue += c;
+    }
+    helper_appendBuf("\"", buf);
+    helper_appendBuf(escapedValue, buf);
+    helper_appendBuf("\"", buf);
+};
+
+#ifdef JSON_WITH_OPTIONAL
+std::optional<std::string_view> Node::getString() const {
+    if (type == Type::String) {
+        return {static_cast<const StringNode*>(this)->value};
+    }
+    return {};
+}
+#endif // JSON_WITH_OPTIONAL
+
+#ifdef JSON_WITH_DEFAULT
+std::string_view Node::getString(std::string_view defaultValue) const {
+    if (type == Type::String) {
+        return static_cast<const StringNode*>(this)->value;
+    }
+    return defaultValue;
+}
+#endif // JSON_WITH_DEFAULT
+
+Node::ptr Node::addNode(std::string_view key, std::string_view value)
+{
+    return addNode([key, value]() -> Node::ptr {
+        return {std::make_shared<StringNode>(key, value)};
+    });
+}
 #endif // JSON_WITH_STRING
+
+
 
 class VectorNode : public Node {
 public:
-    VectorNode(std::string_view key, ValueType type) : Node(key, type) {}
+    VectorNode(std::string_view key, Type type) : Node(key, type) {}
 
     const Node::ptr operator[](int idx) const {
-        if (nodes.size() < (size_t)idx) {
+        if (nodes.size() <= (size_t)idx) {
             return {};
         }
 
@@ -85,24 +263,40 @@ protected:
     std::vector<Node::ptr> nodes;
 };
 
+template<class TBuf>
+void helper_vectorNodeToString(const Node* node, TBuf& buf)
+{
+    int idx = 0;
+    for (auto childNode = (*node)[idx]; childNode; childNode = (*node)[++idx]) {
+        if (idx) {
+            helper_appendBuf(",", buf);
+        }
+        helper_toString(childNode.ptr.get(), buf);
+    }
+};
+
+
+
 class ObjectNode : public VectorNode {
 public:
-    ObjectNode(std::string_view key) : VectorNode(key, ValueType::Object) {}
+    ObjectNode(std::string_view key) : VectorNode(key, Type::Object) {}
 };
+
+
 
 class ArrayNode : public VectorNode {
 public:
-    ArrayNode(std::string_view key) : VectorNode(key, ValueType::Array) {}
+    ArrayNode(std::string_view key) : VectorNode(key, Type::Array) {}
 };
 
 
 
-Node::Node(std::string_view key, ValueType type)
+Node::Node(std::string_view key, Type type)
     : type{type}, key{key}
 {
 }
 
-Node::ValueType Node::getType() const
+Node::Type Node::getType() const
 {
     return type;
 }
@@ -112,85 +306,9 @@ std::string_view Node::getKey() const
     return key;
 }
 
-#ifdef JSON_WITH_OPTIONAL
-#ifdef JSON_WITH_BOOL
-std::optional<bool> Node::getBool() const {
-    if (type == ValueType::Bool) {
-        return {static_cast<const BoolNode*>(this)->value};
-    }
-    return {};
-}
-#endif // JSON_WITH_BOOL
-
-#ifdef JSON_WITH_INT
-std::optional<int> Node::getInt() const {
-    if (type == ValueType::Int) {
-        return {static_cast<const IntNode*>(this)->value};
-    }
-    return {};
-}
-#endif // JSON_WITH_INT
-
-#ifdef JSON_WITH_DOUBLE
-std::optional<double> Node::getDouble() const {
-    if (type == ValueType::Double) {
-        return {static_cast<const DoubleNode*>(this)->value};
-    }
-    return {};
-}
-#endif // JSON_WITH_DOUBLE
-
-#ifdef JSON_WITH_STRING
-std::optional<std::string_view> Node::getString() const {
-    if (type == ValueType::String) {
-        return {static_cast<const StringNode*>(this)->value};
-    }
-    return {};
-}
-#endif // JSON_WITH_STRING
-#endif // JSON_WITH_OPTIONAL
-
-#ifdef JSON_WITH_DEFAULT
-#ifdef JSON_WITH_BOOL
-bool Node::getBool(bool defaultValue) const {
-    if (type == ValueType::Bool) {
-        return static_cast<const BoolNode*>(this)->value;
-    }
-    return defaultValue;
-}
-#endif // JSON_WITH_BOOL
-
-#ifdef JSON_WITH_INT
-int Node::getInt(int defaultValue) const {
-    if (type == ValueType::Int) {
-        return static_cast<const IntNode*>(this)->value;
-    }
-    return defaultValue;
-}
-#endif // JSON_WITH_INT
-
-#ifdef JSON_WITH_DOUBLE
-double Node::getDouble(double defaultValue) const {
-    if (type == ValueType::Double) {
-        return static_cast<const DoubleNode*>(this)->value;
-    }
-    return defaultValue;
-}
-#endif // JSON_WITH_DOUBLE
-
-#ifdef JSON_WITH_STRING
-std::string_view Node::getString(std::string_view defaultValue) const {
-    if (type == ValueType::String) {
-        return static_cast<const StringNode*>(this)->value;
-    }
-    return defaultValue;
-}
-#endif // JSON_WITH_STRING
-#endif // JSON_WITH_DEFAULT
-
 const Node::ptr Node::operator[](int idx) const
 {
-    if (type != ValueType::Array && type != ValueType::Object) {
+    if (type != Type::Array && type != Type::Object) {
         return {};
     }
 
@@ -200,7 +318,7 @@ const Node::ptr Node::operator[](int idx) const
 
 const Node::ptr Node::operator[](std::string_view key) const
 {
-    if (type != ValueType::Array && type != ValueType::Object) {
+    if (type != Type::Array && type != Type::Object) {
         return {};
     }
 
@@ -238,25 +356,25 @@ public:
         Type type;
         std::string value;
 
-        static std::string_view getType(Type type) {
-            static std::string_view Sarr[] = {
-                "Invalid",
-                "ObjectName",
-                "NullValue",
-                "TrueValue",
-                "FalseValue",
-                "IntValue",
-                "DoubleValue",
-                "StringValue",
-                "NewObject",
-                "EndObject",
-                "NewArray",
-                "EndArray",
-                "Comma",
-                "Eof",
-            };
-            return Sarr[(int)type];
-        }
+        // static std::string_view getType(Type type) {
+        //     static std::string_view Sarr[] = {
+        //         "Invalid",
+        //         "ObjectName",
+        //         "NullValue",
+        //         "TrueValue",
+        //         "FalseValue",
+        //         "IntValue",
+        //         "DoubleValue",
+        //         "StringValue",
+        //         "NewObject",
+        //         "EndObject",
+        //         "NewArray",
+        //         "EndArray",
+        //         "Comma",
+        //         "Eof",
+        //     };
+        //     return Sarr[(int)type];
+        // }
     };
 
     Parser(std::function<std::string()> fnReadLine)
@@ -300,11 +418,7 @@ public:
     }
 
     Token getQuotedStringToken() {
-#ifdef WITH_SSTREAM
-        std::stringstream ss;
-#else
-        std::string str;
-#endif
+        TStringBuf strBuf;
         bool isEscaped = false;
 
         while (jsonIdx < json.length()) {
@@ -314,11 +428,7 @@ public:
             case '\\':
                 if (isEscaped) {
                     isEscaped = false;
-#ifdef WITH_SSTREAM
-                    ss << c;
-#else
-                    str += c;
-#endif
+                    helper_appendBuf(c, strBuf);
                 } else {
                     isEscaped = true;
                 }
@@ -328,45 +438,25 @@ public:
             case '"':
                 if (isEscaped) {
                     isEscaped = false;
-#ifdef WITH_SSTREAM
-                    ss << c;
-#else
-                    str += c;
-#endif
+                    helper_appendBuf(c, strBuf);
                 } else {
-#ifdef WITH_SSTREAM
-                    return Token { getQuotedStringTokenType(), ss.str() };
-#else
-                    return Token { getQuotedStringTokenType(), str };
-#endif
+                    return Token{getQuotedStringTokenType(), helper_printBuf(strBuf)};
                 }
 
                 break;
 
             default:
                 if (isEscaped) {
-#ifdef WITH_SSTREAM
-                    ss << '\\';
-#else
-                    str += c;
-#endif
+                    helper_appendBuf(c, strBuf);
                     isEscaped = false;
                 }
 
-#ifdef WITH_SSTREAM
-                ss << c;
-#else
-                str += c;
-#endif
+                helper_appendBuf(c, strBuf);
                 break;
             }
         }
 
-#ifdef WITH_SSTREAM
-        return Token { getQuotedStringTokenType(), ss.str() };
-#else
-        return Token { getQuotedStringTokenType(), str };
-#endif
+        return Token{getQuotedStringTokenType(), helper_printBuf(strBuf)};
     }
 
     Token parseValueToken(std::string_view value) {
@@ -416,11 +506,7 @@ public:
     }
 
     Token getValueToken() {
-#ifdef WITH_SSTREAM
-        std::stringstream ss;
-#else
-        std::string str;
-#endif
+        TStringBuf strBuf;
 
         while (jsonIdx < json.length()) {
             const char c = json[jsonIdx++];
@@ -430,25 +516,13 @@ public:
                     jsonIdx--;
                 }
 
-#ifdef WITH_SSTREAM
-                return parseValueToken(ss.str());
-#else
-                return parseValueToken(str);
-#endif
+                return parseValueToken(helper_printBuf(strBuf));
             }
 
-#ifdef WITH_SSTREAM
-            ss << c;
-#else
-            str += c;
-#endif
+            helper_appendBuf(c, strBuf);
         }
 
-#ifdef WITH_SSTREAM
-        return parseValueToken(ss.str());
-#else
-        return parseValueToken(str);
-#endif
+        return parseValueToken(helper_printBuf(strBuf));
     }
 
     Token getNextToken() {
@@ -502,8 +576,8 @@ public:
             auto parentNode = stack.top();
 
             switch (parentNode->getType()) {
-            case Node::ValueType::Object:
-            case Node::ValueType::Array: {
+            case Node::Type::Object:
+            case Node::Type::Array: {
                 VectorNode* vectorNode = static_cast<VectorNode*>(parentNode.ptr.get());
                 vectorNode->addNode(node);
             }
@@ -514,8 +588,8 @@ public:
             }
 
             switch (node->getType()) {
-            case Node::ValueType::Object:
-            case Node::ValueType::Array:
+            case Node::Type::Object:
+            case Node::Type::Array:
                 stack.push(node);
                 break;
 
@@ -576,7 +650,7 @@ public:
                 break;
 
             case Token::Type::NullValue:
-                curNode.ptr = std::make_shared<Node>(nodeName.value, Node::ValueType::Null);
+                curNode.ptr = std::make_shared<Node>(nodeName.value, Node::Type::Null);
                 isInvalid = !jsonAddNode(stack, curNode, nodeName);
                 break;
 
@@ -620,7 +694,7 @@ public:
 
             case Token::Type::EndObject:
                 curNode = jsonRmNode(stack, nodeName);
-                isInvalid = ((!curNode.ptr) || (curNode.ptr->getType() != Node::ValueType::Object));
+                isInvalid = ((!curNode.ptr) || (curNode.ptr->getType() != Node::Type::Object));
                 assert(isInvalid == false);      // @todo_llasek: DBG
                 break;
 
@@ -631,14 +705,14 @@ public:
 
             case Token::Type::EndArray:
                 curNode = jsonRmNode(stack, nodeName);
-                isInvalid = ((!curNode.ptr) || (curNode.ptr->getType() != Node::ValueType::Array));
+                isInvalid = ((!curNode.ptr) || (curNode.ptr->getType() != Node::Type::Array));
                 assert(isInvalid == false);      // @todo_llasek: DBG
                 break;
 
             case Token::Type::Comma:
                 // @todo_llasek: implement corner cases like: subsequent commas, start with comma
                 isInvalid = (stack.empty() ||
-                             (stack.top().ptr->getType() != Node::ValueType::Object && stack.top().ptr->getType() != Node::ValueType::Array));
+                             (stack.top().ptr->getType() != Node::Type::Object && stack.top().ptr->getType() != Node::Type::Array));
                 break;
 
             case Token::Type::Eof:
@@ -678,6 +752,122 @@ const Node::ptr Node::parse(std::function<std::string()> fnReadLine)
 {
     Parser parser(fnReadLine);
     return parser.parse();
+}
+
+
+
+Node::ptr Node::createRootNode()
+{
+    return {std::make_shared<ObjectNode>(std::string_view{})};
+}
+
+Node::ptr Node::addNode(std::function<ptr()> createNewNode)
+{
+    auto parentType = getType();
+    if (parentType != Type::Object && parentType != Type::Array) {
+        return {};
+    }
+
+    auto vectorNode = static_cast<VectorNode*>(this);
+    auto childNode = createNewNode();
+    vectorNode->addNode(childNode);
+    return childNode;
+}
+
+Node::ptr Node::addNode(Type type, std::string_view key)
+{
+    if (type != Type::Null && type != Type::Object && type != Type::Array) {
+        return {};
+    }
+
+    switch (type) {
+    case Type::Null:
+        return addNode([type, key]() -> Node::ptr {
+            return {std::make_shared<Node>(key, type)};
+        });
+
+    case Type::Object:
+        return addNode([key]() -> Node::ptr {
+            return {std::make_shared<ObjectNode>(key)};
+        });
+
+    case Type::Array:
+        return addNode([key]() -> Node::ptr {
+            return {std::make_shared<ArrayNode>(key)};
+        });
+        break;
+
+    default:
+        return {};
+    }
+}
+
+
+
+template<class TBuf>
+void helper_toString(const Node* node, TBuf& buf)
+{
+    auto nodeType = node->getType();
+    auto nodeKey = node->getKey();
+
+    if (nodeKey.length() > 0) {
+        helper_appendBuf("\"", buf);
+        helper_appendBuf(nodeKey, buf);
+        helper_appendBuf("\":", buf);
+    }
+
+    switch (nodeType) {
+    case Node::Type::Null:
+        helper_appendBuf("null", buf);
+        break;
+
+    case Node::Type::Object:
+        helper_appendBuf("{", buf);
+        helper_vectorNodeToString(node, buf);
+        helper_appendBuf("}", buf);
+        break;
+
+    case Node::Type::Array:
+        helper_appendBuf("[", buf);
+        helper_vectorNodeToString(node, buf);
+        helper_appendBuf("]", buf);
+        break;
+
+#ifdef JSON_WITH_BOOL
+    case Node::Type::Bool:
+        helper_boolNodeToString(node, buf);
+        break;
+#endif // JSON_WITH_BOOL
+
+#ifdef JSON_WITH_INT
+    case Node::Type::Int:
+        helper_intNodeToString(node, buf);
+        break;
+#endif // JSON_WITH_INT
+
+#ifdef JSON_WITH_DOUBLE
+    case Node::Type::Double:
+        helper_doubleNodeToString(node, buf);
+        break;
+#endif // JSON_WITH_DOUBLE
+
+#ifdef JSON_WITH_STRING
+    case Node::Type::String:
+        helper_stringNodeToString(node, buf);
+        break;
+#endif // JSON_WITH_STRING
+
+    default:
+        helper_appendBuf("<invalid>", buf);
+        break;
+    }
+}
+
+std::string Node::toString() const
+{
+    TStringBuf strBuf;
+    helper_toString(this, strBuf);
+    return helper_printBuf(strBuf);
 }
 
 }   // namespace myjson

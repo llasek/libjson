@@ -4,33 +4,16 @@
  */
 #pragma once
 
-#ifndef JSON_WITHOUT_BOOL
-    #define JSON_WITH_BOOL
-#endif // JSON_WITHOUT_BOOL
-#ifndef JSON_WITHOUT_INT
-    #define JSON_WITH_INT
-#endif // JSON_WITHOUT_INT
-#ifndef JSON_WITHOUT_DOUBLE
-    #define JSON_WITH_DOUBLE
-#endif // JSON_WITHOUT_DOUBLE
-#ifndef JSON_WITHOUT_STRING
-    #define JSON_WITH_STRING
-#endif // JSON_WITHOUT_STRING
-
-#ifndef JSON_WITHOUT_OPTIONAL
-    #define JSON_WITH_OPTIONAL
-#endif // JSON_WITHOUT_OPTIONAL
-#ifndef JSON_WITHOUT_DEFAULT
-    #define JSON_WITH_DEFAULT
-#endif // JSON_WITHOUT_DEFAULT
+#include "myjsondef.h"
 
 #include <functional>
 #include <memory>
+#include <string>
+#include <string_view>
+
 #ifdef JSON_WITH_OPTIONAL
     #include <optional>
 #endif // JSON_WITH_OPTIONAL
-#include <string>
-#include <string_view>
 
 namespace myjson {
 
@@ -88,7 +71,7 @@ class Node {
 public:
     using ptr = my_shared_ptr<Node>;
 
-    enum class ValueType : unsigned int {
+    enum class Type : unsigned int {
         Invalid = 0,
         Null,
         Object,
@@ -107,50 +90,98 @@ public:
 #endif // JSON_WITH_STRING
     };
 
-    Node(std::string_view key, ValueType type);
+    Node(std::string_view key, Type type);
     virtual ~Node() {};
 
-    ValueType getType() const;
+    /**
+     * Get node type
+     */
+    Type getType() const;
+
+    /**
+     * Return a node key
+     */
     std::string_view getKey() const;
 
+#ifdef JSON_WITH_BOOL
 #ifdef JSON_WITH_OPTIONAL
-#ifdef JSON_WITH_BOOL
     std::optional<bool> getBool() const;
-#endif // JSON_WITH_BOOL
-#ifdef JSON_WITH_INT
-    std::optional<int> getInt() const;
-#endif // JSON_WITH_INT
-#ifdef JSON_WITH_DOUBLE
-    std::optional<double> getDouble() const;
-#endif // JSON_WITH_DOUBLE
-#ifdef JSON_WITH_STRING
-    std::optional<std::string_view> getString() const;
-#endif // JSON_WITH_STRING
 #endif // JSON_WITH_OPTIONAL
-
 #ifdef JSON_WITH_DEFAULT
-#ifdef JSON_WITH_BOOL
     bool getBool(bool defaultValue) const;
-#endif // JSON_WITH_BOOL
-#ifdef JSON_WITH_INT
-    int getInt(int defaultValue) const;
-#endif // JSON_WITH_INT
-#ifdef JSON_WITH_DOUBLE
-    double getDouble(double defaultValue) const;
-#endif // JSON_WITH_DOUBLE
-#ifdef JSON_WITH_STRING
-    std::string_view getString(std::string_view defaultValue) const;
-#endif // JSON_WITH_STRING
 #endif // JSON_WITH_DEFAULT
+    ptr addNode(std::string_view key, bool value);
+#endif // JSON_WITH_BOOL
 
+#ifdef JSON_WITH_INT
+#ifdef JSON_WITH_OPTIONAL
+    std::optional<int> getInt() const;
+#endif // JSON_WITH_OPTIONAL
+#ifdef JSON_WITH_DEFAULT
+    int getInt(int defaultValue) const;
+#endif // JSON_WITH_DEFAULT
+    ptr addNode(std::string_view key, int value);
+#endif // JSON_WITH_INT
+
+#ifdef JSON_WITH_DOUBLE
+#ifdef JSON_WITH_OPTIONAL
+    std::optional<double> getDouble() const;
+#endif // JSON_WITH_OPTIONAL
+#ifdef JSON_WITH_DEFAULT
+    double getDouble(double defaultValue) const;
+#endif // JSON_WITH_DEFAULT
+    ptr addNode(std::string_view key, double value);
+#endif // JSON_WITH_DOUBLE
+
+#ifdef JSON_WITH_STRING
+#ifdef JSON_WITH_OPTIONAL
+    std::optional<std::string_view> getString() const;
+#endif // JSON_WITH_OPTIONAL
+#ifdef JSON_WITH_DEFAULT
+    std::string_view getString(std::string_view defaultValue) const;
+#endif // JSON_WITH_DEFAULT
+    ptr addNode(std::string_view key, std::string_view value);
+#endif // JSON_WITH_STRING
+
+    /**
+     * Object and array accessor
+     */
     const ptr operator[](int idx) const;
+
+    /**
+     * Object and array accessor
+     */
     const ptr operator[](std::string_view key) const;
 
+    /**
+     * Parse a string
+     */
     static const ptr parse(std::string_view json);
+
+    /**
+     * Parse a string
+     */
     static const ptr parse(std::function<std::string()> fnReadLine);
 
+    /**
+     * Create a root object node
+     */
+    static ptr createRootNode();
+
+    /**
+     * Add a child object, array or null-typed node
+     */
+    ptr addNode(Type type = Type::Object, std::string_view key = {});
+
+    /**
+     * Convert to a string
+     */
+    std::string toString() const;
+
 protected:
-    ValueType type;
+    ptr addNode(std::function<ptr()> createNewNode);
+
+    Type type;
     std::string key;
 };
 

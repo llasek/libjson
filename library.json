@@ -8,7 +8,7 @@
     },
     "version": "0.0.1",
     "build": {
-        "flags": "-DNO_SSTREAM",
+        "flags": "-DJSON_WITHOUT_SSTREAM",
         "srcDir": "./src",
         "srcFilter": "+<*> -<examples>"
     }
